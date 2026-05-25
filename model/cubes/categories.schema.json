@@ -1,0 +1,55 @@
+{
+  "name": "categories",
+  "sql": "SELECT\n  c.id,\n  c.name,\n  c.parent_id,\n  c.type,\n  COALESCE(p.name, 'Top level') AS parent_name,\n  c.created_at\nFROM public.categories c\nLEFT JOIN public.categories p ON p.id = c.parent_id",
+  "title": "Categories",
+  "description": "Hierarchical expense / income taxonomy",
+  "public": true,
+  "joins": {
+    "transactions": {
+      "sql": "{CUBE}.id = {transactions}.category_id",
+      "relationship": "one_to_many"
+    },
+    "merchants": {
+      "sql": "{CUBE}.id = {merchants}.default_category_id",
+      "relationship": "one_to_many"
+    }
+  },
+  "dimensions": {
+    "id": {
+      "sql": "id",
+      "type": "number",
+      "primary_key": true
+    },
+    "name": {
+      "sql": "name",
+      "type": "string"
+    },
+    "parent_name": {
+      "sql": "parent_name",
+      "type": "string",
+      "title": "Parent category"
+    },
+    "type": {
+      "sql": "type",
+      "type": "string",
+      "description": "One of expense, income, transfer"
+    },
+    "created_at": {
+      "sql": "created_at",
+      "type": "time"
+    }
+  },
+  "measures": {
+    "count": {
+      "type": "count",
+      "description": "Number of categories"
+    }
+  },
+  "hierarchies": {
+    "taxonomy": {
+      "title": "Category taxonomy",
+      "public": true,
+      "levels": ["id", "parent_name", "name"]
+    }
+  }
+}

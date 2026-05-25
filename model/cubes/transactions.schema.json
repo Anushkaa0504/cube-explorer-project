@@ -1,0 +1,297 @@
+{
+  "name": "transactions",
+  "sql_table": "public.transactions",
+  "title": "Transactions",
+  "description": "One row per money movement (expense, income, or transfer)",
+  "public": true,
+  "refresh_key": {
+    "every": "30 second",
+    "sql": "SELECT MAX(created_at) FROM public.transactions"
+  },
+  "joins": {
+    "users": {
+      "sql": "{CUBE}.user_id = {users}.id",
+      "relationship": "many_to_one"
+    },
+    "accounts": {
+      "sql": "{CUBE}.account_id = {accounts}.id",
+      "relationship": "many_to_one"
+    },
+    "categories": {
+      "sql": "{CUBE}.category_id = {categories}.id",
+      "relationship": "many_to_one"
+    },
+    "merchants": {
+      "sql": "{CUBE}.merchant_id = {merchants}.id",
+      "relationship": "many_to_one"
+    }
+  },
+  "dimensions": {
+    "id": {
+      "sql": "id",
+      "type": "number",
+      "primary_key": true,
+      "public": true
+    },
+    "user_id": { "sql": "user_id", "type": "number" },
+    "account_id": { "sql": "account_id", "type": "number" },
+    "merchant_id": { "sql": "merchant_id", "type": "number" },
+    "category_id": { "sql": "category_id", "type": "number" },
+    "amount": {
+      "sql": "amount",
+      "type": "number",
+      "format": "currency"
+    },
+    "description": {
+      "sql": "description",
+      "type": "string",
+      "mask": { "sql": "'[redacted]'" }
+    },
+    "status": {
+      "sql": "status",
+      "type": "string",
+      "description": "One of posted, pending, failed"
+    },
+    "transaction_date": {
+      "sql": "transaction_date",
+      "type": "time",
+      "title": "Transaction date"
+    },
+    "created_at": { "sql": "created_at", "type": "time" },
+    "direction": {
+      "type": "string",
+      "case": {
+        "when": [
+          { "sql": "{CUBE}.amount > 0", "label": "Income" },
+          { "sql": "{CUBE}.amount < 0", "label": "Expense" }
+        ],
+        "else": { "label": "Zero" }
+      }
+    },
+    "amount_band": {
+      "type": "string",
+      "case": {
+        "when": [
+          { "sql": "ABS({CUBE}.amount) < 10", "label": "< $10" },
+          { "sql": "ABS({CUBE}.amount) < 50", "label": "$10-$50" },
+          { "sql": "ABS({CUBE}.amount) < 200", "label": "$50-$200" },
+          { "sql": "ABS({CUBE}.amount) < 1000", "label": "$200-$1k" }
+        ],
+        "else": { "label": "$1k+" }
+      }
+    },
+    "is_posted": {
+      "sql": "{CUBE}.status = 'posted'",
+      "type": "boolean"
+    }
+  },
+  "measures": {
+    "count": {
+      "type": "count",
+      "description": "Total number of transactions"
+    },
+    "posted_count": {
+      "type": "count",
+      "filters": [{ "sql": "{CUBE}.status = 'posted'" }]
+    },
+    "pending_count": {
+      "type": "count",
+      "filters": [{ "sql": "{CUBE}.status = 'pending'" }]
+    },
+    "failed_count": {
+      "type": "count",
+      "filters": [{ "sql": "{CUBE}.status = 'failed'" }]
+    },
+    "total_amount": {
+      "sql": "amount",
+      "type": "sum",
+      "format": "currency",
+      "description": "Net cash flow (income minus expenses)"
+    },
+    "total_income": {
+      "sql": "amount",
+      "type": "sum",
+      "format": "currency",
+      "filters": [{ "sql": "{CUBE}.amount > 0 AND {CUBE}.status = 'posted'" }],
+      "mask": -1
+    },
+    "total_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "format": "currency",
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }]
+    },
+    "net_cashflow": {
+      "type": "number",
+      "sql": "{total_income} - {total_expense}",
+      "format": "currency",
+      "description": "Income minus expenses (signed)"
+    },
+    "savings_rate": {
+      "type": "number",
+      "sql": "100.0 * {net_cashflow} / NULLIF({total_income}, 0)",
+      "format": "percent",
+      "description": "Percent of income retained as savings",
+      "mask": 0
+    },
+    "avg_transaction_amount": {
+      "sql": "amount",
+      "type": "avg",
+      "format": "currency"
+    },
+    "avg_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "avg",
+      "format": "currency",
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }]
+    },
+    "trailing_30d_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "rolling_window": { "trailing": "30 day" },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }]
+    },
+    "trailing_7d_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "format": "currency",
+      "rolling_window": { "trailing": "7 day" },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }],
+      "description": "Spend over the last 7 days at each bucket point"
+    },
+    "trailing_30d_count": {
+      "type": "count",
+      "rolling_window": { "trailing": "30 day" },
+      "filters": [{ "sql": "{CUBE}.status = 'posted'" }],
+      "description": "Number of posted transactions in the last 30 days"
+    },
+    "prev_30d_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "format": "currency",
+      "rolling_window": {
+        "trailing": "30 day",
+        "offset": "start"
+      },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }],
+      "description": "Spend in the 30-day window ending at the START of the bucket (use with trailing_30d_expense for comparison)"
+    },
+    "cumulative_income": {
+      "sql": "amount",
+      "type": "sum",
+      "rolling_window": { "trailing": "unbounded" },
+      "filters": [{ "sql": "{CUBE}.amount > 0 AND {CUBE}.status = 'posted'" }]
+    },
+    "ytd_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "rolling_window": { "type": "to_date", "granularity": "year" },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }],
+      "description": "Year-to-date spend (resets every January 1)"
+    },
+    "qtd_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "rolling_window": { "type": "to_date", "granularity": "quarter" },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }],
+      "description": "Quarter-to-date spend"
+    },
+    "mtd_expense": {
+      "sql": "ABS({CUBE}.amount)",
+      "type": "sum",
+      "rolling_window": { "type": "to_date", "granularity": "month" },
+      "filters": [{ "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'" }],
+      "description": "Month-to-date spend"
+    },
+    "category_parent_expense": {
+      "multi_stage": true,
+      "sql": "{total_expense}",
+      "type": "sum",
+      "group_by": ["categories.parent_name"],
+      "description": "Parent-category expense total (inner stage)"
+    },
+    "pct_of_parent_category": {
+      "multi_stage": true,
+      "sql": "{total_expense} / NULLIF({category_parent_expense}, 0)",
+      "type": "number",
+      "format": "percent",
+      "description": "Share of parent-category spend (e.g. Groceries' share of Food & Dining)"
+    },
+    "total_expense_prior_year": {
+      "multi_stage": true,
+      "sql": "{total_expense}",
+      "type": "number",
+      "time_shift": [
+        {
+          "time_dimension": "transactions.transaction_date",
+          "interval": "1 year",
+          "type": "prior"
+        }
+      ],
+      "description": "Same expense shifted one year back (for YoY comparison)"
+    },
+    "expense_yoy_growth": {
+      "multi_stage": true,
+      "sql": "({total_expense} - {total_expense_prior_year}) / NULLIF({total_expense_prior_year}, 0)",
+      "type": "number",
+      "format": "percent",
+      "description": "Year-over-year growth in expenses (current vs prior year)"
+    }
+  },
+  "segments": {
+    "posted_only": { "sql": "{CUBE}.status = 'posted'" },
+    "expenses_only": {
+      "sql": "{CUBE}.amount < 0 AND {CUBE}.status = 'posted'"
+    },
+    "income_only": {
+      "sql": "{CUBE}.amount > 0 AND {CUBE}.status = 'posted'"
+    },
+    "this_year": {
+      "sql": "EXTRACT(YEAR FROM {CUBE}.transaction_date) = EXTRACT(YEAR FROM NOW())"
+    },
+    "last_30_days": {
+      "sql": "{CUBE}.transaction_date >= NOW() - INTERVAL '30 days'"
+    }
+  },
+  "pre_aggregations": {
+    "spending_by_category_daily": {
+      "measures": ["total_expense", "posted_count"],
+      "dimensions": ["categories.name", "categories.type"],
+      "time_dimension": "transaction_date",
+      "granularity": "day",
+      "partition_granularity": "month",
+      "refresh_key": {
+        "every": "5 minute",
+        "sql": "SELECT MAX(transaction_date)\nFROM public.transactions\nWHERE status = 'posted'"
+      }
+    },
+    "cashflow_monthly": {
+      "measures": ["total_income", "total_expense", "net_cashflow"],
+      "time_dimension": "transaction_date",
+      "granularity": "month",
+      "refresh_key": {
+        "every": "0 4 * * *",
+        "timezone": "UTC"
+      }
+    },
+    "pending_summary_live": {
+      "measures": ["pending_count", "failed_count"],
+      "refresh_key": {
+        "every": "30 second",
+        "sql": "SELECT MAX(created_at)\nFROM public.transactions\nWHERE status IN ('pending', 'failed')"
+      }
+    }
+  },
+  "hierarchies": {
+    "spending_path": {
+      "title": "Spending breakdown",
+      "public": true,
+      "levels": ["direction", "amount_band"]
+    },
+    "time": {
+      "title": "Time drill-down",
+      "public": true,
+      "levels": ["transaction_date"]
+    }
+  }
+}

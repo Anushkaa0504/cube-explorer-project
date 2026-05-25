@@ -1,0 +1,82 @@
+{
+  "name": "accounts",
+  "sql_table": "public.accounts",
+  "title": "Accounts",
+  "description": "Bank, credit, and investment accounts",
+  "public": true,
+  "joins": {
+    "users": {
+      "sql": "{CUBE}.user_id = {users}.id",
+      "relationship": "many_to_one"
+    },
+    "transactions": {
+      "sql": "{CUBE}.id = {transactions}.account_id",
+      "relationship": "one_to_many"
+    }
+  },
+  "dimensions": {
+    "id": {
+      "sql": "id",
+      "type": "number",
+      "primary_key": true
+    },
+    "user_id": {
+      "sql": "user_id",
+      "type": "number"
+    },
+    "name": {
+      "sql": "name",
+      "type": "string",
+      "mask": {
+        "sql": "CONCAT('***', RIGHT({CUBE}.name, 4))"
+      }
+    },
+    "type": {
+      "sql": "type",
+      "type": "string",
+      "title": "Account type",
+      "description": "One of checking, savings, credit_card, investment"
+    },
+    "currency": {
+      "sql": "currency",
+      "type": "string"
+    },
+    "opened_at": {
+      "sql": "opened_at",
+      "type": "time"
+    },
+    "liquidity_tier": {
+      "type": "string",
+      "case": {
+        "when": [
+          {
+            "sql": "{CUBE}.type IN ('checking')",
+            "label": "Liquid"
+          },
+          {
+            "sql": "{CUBE}.type IN ('savings', 'credit_card')",
+            "label": "Short-term"
+          }
+        ],
+        "else": { "label": "Long-term" }
+      }
+    }
+  },
+  "measures": {
+    "count": {
+      "type": "count",
+      "description": "Number of accounts"
+    }
+  },
+  "hierarchies": {
+    "account_taxonomy": {
+      "title": "Account taxonomy",
+      "levels": ["liquidity_tier", "type", "name"]
+    }
+  },
+  "segments": {
+    "credit_cards": {
+      "sql": "{CUBE}.type = 'credit_card'"
+    }
+  }
+}

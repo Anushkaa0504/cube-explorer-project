@@ -1,0 +1,633 @@
+{
+  "$schema": "Cube Explorer identity & access registry (demo)",
+  "users": [
+    {
+      "id": 1,
+      "email": "ada@example.com",
+      "fullName": "Ada Lovelace",
+      "country": "GB",
+      "roles": [
+        "customer"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 2,
+      "email": "alan@example.com",
+      "fullName": "Alan Turing",
+      "country": "GB",
+      "roles": [
+        "analyst"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 3,
+      "email": "grace@example.com",
+      "fullName": "Grace Hopper",
+      "country": "US",
+      "roles": [
+        "customer"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 4,
+      "email": "linus@example.com",
+      "fullName": "Linus Torvalds",
+      "country": "FI",
+      "roles": [
+        "support_agent"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 5,
+      "email": "margaret@example.com",
+      "fullName": "Margaret Hamilton",
+      "country": "US",
+      "roles": [
+        "auditor"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 6,
+      "email": "ops@example.com",
+      "fullName": "Ops Admin",
+      "country": "US",
+      "roles": [
+        "admin"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 7,
+      "email": "priya@example.com",
+      "fullName": "Priya Sharma",
+      "country": "IN",
+      "roles": [
+        "marketing"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 8,
+      "email": "james@example.com",
+      "fullName": "James Lee",
+      "country": "US",
+      "roles": [
+        "finance_viewer"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 9,
+      "email": "carlos@example.com",
+      "fullName": "Carlos Mendez",
+      "country": "US",
+      "roles": [
+        "regional_lead"
+      ],
+      "tenant_id": "default"
+    },
+    {
+      "id": 10,
+      "email": "zoe@example.com",
+      "fullName": "Zoe Martin",
+      "country": "GB",
+      "roles": [
+        "premium_customer"
+      ],
+      "tenant_id": "default"
+    }
+  ],
+  "roles": {
+    "analyst": {
+      "description": "Full access to the semantic layer (no masking).",
+      "cubes": [
+        "users",
+        "accounts",
+        "categories",
+        "merchants",
+        "transactions"
+      ],
+      "access": "full on all cubes with access_policy"
+    },
+    "admin": {
+      "description": "Same cube access as analyst in this demo.",
+      "cubes": [
+        "users",
+        "accounts",
+        "categories",
+        "merchants",
+        "transactions"
+      ],
+      "access": "full (grouped with analyst in access_policy)"
+    },
+    "customer": {
+      "description": "Own transactions only; PII masked on users and accounts.",
+      "cubes": [
+        "users",
+        "accounts",
+        "transactions"
+      ],
+      "access": "row-level on transactions; limited members + masking on users/accounts"
+    },
+    "premium_customer": {
+      "description": "Like customer but may see income/savings measures (unmasked); own rows only.",
+      "cubes": [
+        "users",
+        "accounts",
+        "transactions"
+      ],
+      "access": "row-level on transactions; income measures not masked"
+    },
+    "support_agent": {
+      "description": "Cross-user support; contact fields and descriptions masked.",
+      "cubes": [
+        "users",
+        "accounts",
+        "transactions"
+      ],
+      "access": "see all rows; mask email/country/name/description where defined"
+    },
+    "auditor": {
+      "description": "Financial review; identity and free-text fields masked.",
+      "cubes": [
+        "users",
+        "accounts",
+        "transactions"
+      ],
+      "access": "aggregates visible; mask identity and descriptions"
+    },
+    "marketing": {
+      "description": "Category/merchant taxonomy + anonymized user list; no money movement cubes.",
+      "cubes": [
+        "users",
+        "categories",
+        "merchants"
+      ],
+      "access": "users PII masked; no accounts or transactions"
+    },
+    "finance_viewer": {
+      "description": "Global transaction aggregates only \u2014 no dimensions or descriptions.",
+      "cubes": [
+        "transactions"
+      ],
+      "access": "measures-only on transactions"
+    },
+    "regional_lead": {
+      "description": "Users and spend in one country (JWT country); account names masked.",
+      "cubes": [
+        "users",
+        "accounts",
+        "transactions"
+      ],
+      "access": "row filter by users.country; mask contact fields"
+    }
+  },
+  "accessPolicies": {
+    "users": [
+      {
+        "groups": [
+          "analyst",
+          "admin"
+        ],
+        "member_level": {
+          "includes": "*"
+        }
+      },
+      {
+        "group": "customer",
+        "member_level": {
+          "includes": [
+            "id",
+            "full_name",
+            "created_at",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email",
+            "country"
+          ]
+        }
+      },
+      {
+        "group": "premium_customer",
+        "member_level": {
+          "includes": [
+            "id",
+            "full_name",
+            "created_at",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email",
+            "country"
+          ]
+        }
+      },
+      {
+        "group": "support_agent",
+        "member_level": {
+          "includes": [
+            "id",
+            "full_name",
+            "created_at",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email",
+            "country"
+          ]
+        }
+      },
+      {
+        "group": "regional_lead",
+        "member_level": {
+          "includes": [
+            "id",
+            "full_name",
+            "created_at",
+            "count",
+            "country"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email"
+          ]
+        }
+      },
+      {
+        "group": "marketing",
+        "member_level": {
+          "includes": [
+            "id",
+            "full_name",
+            "created_at",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email",
+            "country"
+          ]
+        }
+      },
+      {
+        "group": "finance_viewer",
+        "member_level": {
+          "includes": [
+            "count"
+          ]
+        }
+      },
+      {
+        "group": "auditor",
+        "member_level": {
+          "includes": [
+            "id",
+            "created_at",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "email",
+            "full_name",
+            "country"
+          ]
+        }
+      }
+    ],
+    "accounts": [
+      {
+        "groups": [
+          "analyst",
+          "admin"
+        ],
+        "member_level": {
+          "includes": "*"
+        }
+      },
+      {
+        "group": "customer",
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "type",
+            "currency",
+            "opened_at",
+            "liquidity_tier",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "name"
+          ]
+        }
+      },
+      {
+        "group": "premium_customer",
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "type",
+            "currency",
+            "opened_at",
+            "liquidity_tier",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "name"
+          ]
+        }
+      },
+      {
+        "group": "support_agent",
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "type",
+            "currency",
+            "opened_at",
+            "liquidity_tier",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "name"
+          ]
+        }
+      },
+      {
+        "group": "regional_lead",
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "type",
+            "currency",
+            "opened_at",
+            "liquidity_tier",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "name"
+          ]
+        }
+      },
+      {
+        "group": "auditor",
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "type",
+            "currency",
+            "opened_at",
+            "liquidity_tier",
+            "count"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "name"
+          ]
+        }
+      }
+    ],
+    "categories": [
+      {
+        "groups": [
+          "analyst",
+          "admin",
+          "marketing",
+          "regional_lead"
+        ],
+        "member_level": {
+          "includes": "*"
+        }
+      }
+    ],
+    "merchants": [
+      {
+        "groups": [
+          "analyst",
+          "admin",
+          "marketing",
+          "regional_lead"
+        ],
+        "member_level": {
+          "includes": "*"
+        }
+      }
+    ],
+    "transactions": [
+      {
+        "groups": [
+          "analyst",
+          "admin"
+        ],
+        "member_level": {
+          "includes": "*"
+        }
+      },
+      {
+        "group": "customer",
+        "conditions": [
+          {
+            "if": "{ securityContext.user_id }"
+          }
+        ],
+        "row_level": {
+          "filters": [
+            {
+              "member": "user_id",
+              "operator": "equals",
+              "values": [
+                "{ securityContext.user_id }"
+              ]
+            }
+          ]
+        },
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "account_id",
+            "merchant_id",
+            "category_id",
+            "amount",
+            "description",
+            "status",
+            "transaction_date",
+            "created_at",
+            "direction",
+            "amount_band",
+            "is_posted",
+            "count",
+            "posted_count",
+            "pending_count",
+            "failed_count",
+            "total_amount",
+            "total_expense",
+            "net_cashflow",
+            "avg_transaction_amount",
+            "avg_expense",
+            "trailing_30d_expense",
+            "trailing_7d_expense",
+            "trailing_30d_count",
+            "prev_30d_expense",
+            "cumulative_income",
+            "ytd_expense",
+            "qtd_expense",
+            "mtd_expense",
+            "category_parent_expense",
+            "pct_of_parent_category",
+            "total_expense_prior_year",
+            "expense_yoy_growth"
+          ]
+        },
+        "member_masking": {
+          "includes": [
+            "total_income",
+            "savings_rate"
+          ]
+        }
+      },
+      {
+        "group": "premium_customer",
+        "conditions": [
+          {
+            "if": "{ securityContext.user_id }"
+          }
+        ],
+        "row_level": {
+          "filters": [
+            {
+              "member": "user_id",
+              "operator": "equals",
+              "values": [
+                "{ securityContext.user_id }"
+              ]
+            }
+          ]
+        },
+        "member_level": {
+          "includes": [
+            "id",
+            "user_id",
+            "account_id",
+            "merchant_id",
+            "category_id",
+            "amount",
+            "description",
+            "status",
+            "transaction_date",
+            "created_at",
+            "direction",
+            "amount_band",
+            "is_posted",
+            "count",
+            "posted_count",
+            "pending_count",
+            "failed_count",
+            "total_amount",
+            "total_income",
+            "total_expense",
+            "net_cashflow",
+            "savings_rate",
+            "avg_transaction_amount",
+            "avg_expense",
+            "trailing_30d_expense",
+            "trailing_7d_expense",
+            "trailing_30d_count",
+            "prev_30d_expense",
+            "cumulative_income",
+            "ytd_expense",
+            "qtd_expense",
+            "mtd_expense"
+          ]
+        }
+      },
+      {
+        "group": "regional_lead",
+        "member_level": {
+          "includes": "*"
+        },
+        "member_masking": {
+          "includes": [
+            "description"
+          ]
+        }
+      },
+      {
+        "group": "finance_viewer",
+        "member_level": {
+          "includes": [
+            "count",
+            "posted_count",
+            "pending_count",
+            "failed_count",
+            "total_amount",
+            "total_income",
+            "total_expense",
+            "net_cashflow",
+            "savings_rate",
+            "avg_transaction_amount",
+            "avg_expense",
+            "trailing_30d_expense",
+            "trailing_7d_expense",
+            "trailing_30d_count",
+            "prev_30d_expense",
+            "cumulative_income",
+            "ytd_expense",
+            "qtd_expense",
+            "mtd_expense"
+          ]
+        }
+      },
+      {
+        "group": "support_agent",
+        "member_level": {
+          "includes": "*"
+        },
+        "member_masking": {
+          "includes": [
+            "description"
+          ]
+        }
+      },
+      {
+        "group": "auditor",
+        "member_level": {
+          "includes": "*"
+        },
+        "member_masking": {
+          "includes": [
+            "description"
+          ]
+        }
+      }
+    ]
+  }
+}

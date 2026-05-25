@@ -1,0 +1,54 @@
+{# ----------------------------------------------------------------------- #}
+{# Dynamic data modeling with Jinja.                                       #}
+{# This single template generates one cube per transaction status         #}
+{# (posted / pending / failed) so each status gets its own pre-filtered    #}
+{# fact table view.                                                        #}
+{#                                                                         #}
+{# Docs: https://docs.cube.dev/docs/data-modeling/dynamic/jinja            #}
+{# NOTE: Cube's Jinja has auto-escape enabled, so every interpolated       #}
+{# string is piped through `| safe` to keep YAML valid.                    #}
+{# ----------------------------------------------------------------------- #}
+
+{%- set statuses = [
+    {'name': 'posted',  'label': 'Posted transactions',  'description': 'Cleared money movements'},
+    {'name': 'pending', 'label': 'Pending transactions', 'description': 'In-flight, not yet cleared'},
+    {'name': 'failed',  'label': 'Failed transactions',  'description': 'Rejected or reversed'}
+] -%}
+
+cubes:
+{%- for s in statuses %}
+  - name: tx_{{ s.name | safe }}
+    sql: |
+      SELECT * FROM public.transactions WHERE status = '{{ s.name | safe }}'
+    title: {{ s.label | safe }}
+    description: {{ s.description | safe }}
+    public: false   # internal cube – not exposed to BI tools by default
+
+    dimensions:
+      - name: id
+        sql: id
+        type: number
+        primary_key: true
+
+      - name: user_id
+        sql: user_id
+        type: number
+
+      - name: amount
+        sql: amount
+        type: number
+        format: currency
+
+      - name: transaction_date
+        sql: transaction_date
+        type: time
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_amount
+        sql: amount
+        type: sum
+        format: currency
+{%- endfor %}

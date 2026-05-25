@@ -1,0 +1,42 @@
+{
+  "name": "merchants",
+  "sql_table": "public.merchants",
+  "title": "Merchants",
+  "description": "Counter-parties of transactions",
+  "public": true,
+  "joins": {
+    "categories": {
+      "sql": "{CUBE}.default_category_id = {categories}.id",
+      "relationship": "many_to_one"
+    },
+    "transactions": {
+      "sql": "{CUBE}.id = {transactions}.merchant_id",
+      "relationship": "one_to_many"
+    }
+  },
+  "dimensions": {
+    "id": {
+      "sql": "id",
+      "type": "number",
+      "primary_key": true
+    },
+    "name": {
+      "sql": "name",
+      "type": "string"
+    },
+    "default_category_id": {
+      "sql": "default_category_id",
+      "type": "number"
+    },
+    "created_at": {
+      "sql": "created_at",
+      "type": "time"
+    }
+  },
+  "measures": {
+    "count": {
+      "type": "count",
+      "description": "Number of merchants"
+    }
+  }
+}

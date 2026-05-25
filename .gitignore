@@ -1,0 +1,12 @@
+.env
+.cubestore/
+model/cubes/*.yml
+model/cubes-js/
+node_modules/
+*.log
+rust/**/target/
+mcp_server/.venv/
+prefect/.venv/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "cube-finance": {
+      "command": "/home/anushkarakesh/cube-explorer-project/mcp_server/.venv/bin/python",
+      "args": [
+        "/home/anushkarakesh/cube-explorer-project/mcp_server/cube_mcp.py"
+      ],
+      "env": {
+        "CUBE_BASE": "http://localhost:4000",
+        "CUBEJS_API_SECRET": "super-secret-please-change-me"
+      }
+    }
+  }
+}

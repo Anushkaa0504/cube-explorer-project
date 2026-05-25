@@ -1,0 +1,59 @@
+# Spending view – the curated, BI-friendly surface for finance analytics.
+# Consumers query this instead of joining cubes themselves.
+views:
+  - name: spending
+    title: Spending analytics
+    description: Money out / money in, with category, merchant and account context
+
+    cubes:
+      - join_path: transactions
+        includes:
+          - amount
+          - amount_band
+          - direction
+          - status
+          - description
+          - transaction_date
+          - count
+          - posted_count
+          - pending_count
+          - failed_count
+          - total_amount
+          - total_income
+          - total_expense
+          - net_cashflow
+          - savings_rate
+          - avg_transaction_amount
+          - avg_expense
+          - trailing_30d_expense
+          - cumulative_income
+
+      - join_path: transactions.users
+        prefix: true
+        includes:
+          - name: full_name
+            alias: full_name
+          - country
+
+      - join_path: transactions.accounts
+        prefix: true
+        includes:
+          - name: name
+            alias: name
+          - type
+          - currency
+          - liquidity_tier
+
+      - join_path: transactions.categories
+        prefix: true
+        includes:
+          - name: name
+            alias: name
+          - parent_name
+          - type
+
+      - join_path: transactions.merchants
+        prefix: true
+        includes:
+          - name: name
+            alias: name

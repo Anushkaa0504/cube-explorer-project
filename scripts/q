@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# q — a tiny REST-API client for Cube.
+#
+# Usage:
+#   q '{"measures":["transactions.total_expense"]}'              # raw query
+#   q -a -u 1 '{"measures":["transactions.posted_count"]}'  # JWT user_id → roles from users.json
+#   q -r analyst -a -u 2 '{"measures":["transactions.posted_count"]}'  # dev role override
+#   q -m                                                         # /v1/meta (cubes/views)
+#   q -s 'SELECT MEASURE(total_expense) FROM transactions'       # /v1/sql (show generated SQL)
+#   q -d                                                         # /v1/dry-run (validate w/o running)
+#   q -P                                                         # list pre-aggregation jobs
+#
+# Reads CUBE_BASE (default http://localhost:4000) and CUBEJS_API_SECRET
+# (default super-secret-please-change-me) from environment or ./.env.
+
+set -euo pipefail
+
+# Load .env so CUBEJS_API_SECRET / CUBE_BASE are available
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ./.env
+  set +a
+fi
+
+BASE="${CUBE_BASE:-http://localhost:4000}"
+SECRET="${CUBEJS_API_SECRET:-super-secret-please-change-me}"
+
+ROLE=""
+USER_ID="1"
+AUTH=false
+MODE="load"
+QUERY=""
+
+# JWT signer (HS256) using Python stdlib so we have zero extra deps
+sign_jwt() {
+  local role="$1" uid="$2"
+  python3 - <<PY
+import base64, hmac, hashlib, json
+def b64(b): return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+claims = {"user_id": $uid}
+if "$role":
+    claims["role"] = "$role"
+header  = b64(json.dumps({"alg":"HS256","typ":"JWT"}, separators=(',',':')).encode())
+payload = b64(json.dumps(claims, separators=(',',':')).encode())
+sig = b64(hmac.new(b"$SECRET", f"{header}.{payload}".encode(), hashlib.sha256).digest())
+print(f"{header}.{payload}.{sig}")
+PY
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -r|--role)   ROLE="$2"; shift 2 ;;
+    -u|--user)   USER_ID="$2"; shift 2 ;;
+    -a|--auth)   AUTH=true; shift ;;
+    -m|--meta)   MODE="meta"; shift ;;
+    -s|--sql)    MODE="sql"; QUERY="$2"; shift 2 ;;
+    -d|--dry)    MODE="dry-run"; shift ;;
+    -P|--preagg) MODE="preagg"; shift ;;
+    -h|--help)   sed -n '2,15p' "$0"; exit 0 ;;
+    *)           QUERY="$1"; shift ;;
+  esac
+done
+
+HEADERS=(-H "Content-Type: application/json")
+if [[ -n "$ROLE" || "$AUTH" == true ]]; then
+  TOKEN=$(sign_jwt "$ROLE" "$USER_ID")
+  HEADERS+=(-H "Authorization: $TOKEN")
+fi
+
+case "$MODE" in
+  meta)
+    curl -fsS "${HEADERS[@]}" "$BASE/cubejs-api/v1/meta" \
+      | jq '{cubes: [.cubes[] | {name, public, measures:[.measures[].name], dimensions:[.dimensions[].name]}]}'
+    ;;
+  sql)
+    curl -fsS -G "${HEADERS[@]}" "$BASE/cubejs-api/v1/sql" \
+      --data-urlencode "query={\"query\":\"$QUERY\"}" | jq
+    ;;
+  dry-run)
+    [[ -z "$QUERY" ]] && { echo "dry-run needs a JSON query"; exit 2; }
+    curl -fsS -G "${HEADERS[@]}" "$BASE/cubejs-api/v1/dry-run" \
+      --data-urlencode "query=$QUERY" | jq
+    ;;
+  preagg)
+    TOKEN=${TOKEN:-$(sign_jwt "admin" "0")}
+    curl -fsS -H "Authorization: $TOKEN" "$BASE/cubejs-system/v1/pre-aggregations/jobs" | jq
+    ;;
+  load)
+    [[ -z "$QUERY" ]] && { echo "Usage: q '<json-query>'  (or q --help)"; exit 2; }
+
+    # Poll until ready (Cube returns 'Continue wait' for cold pre-aggs)
+    for _ in $(seq 1 30); do
+      RESP=$(curl -fsS -G "${HEADERS[@]}" "$BASE/cubejs-api/v1/load" \
+              --data-urlencode "query=$QUERY")
+      if echo "$RESP" | jq -e '.error == "Continue wait"' >/dev/null 2>&1; then
+        sleep 1
+        continue
+      fi
+      echo "$RESP" | jq
+      exit 0
+    done
+    echo "Timed out waiting for query."
+    exit 1
+    ;;
+esac

@@ -1,0 +1,68 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Local Postgres seeded with a personal-finance dataset.
+  # The container auto-runs every *.sql file in `seed/` on first boot
+  # (alphabetical order). To wipe and re-seed: `docker compose down -v`.
+  # We use a non-default port (5435) to avoid conflicts with any host Postgres.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: cube_finance_pg
+    restart: unless-stopped
+    network_mode: 'host'
+    command: ["postgres", "-p", "5435"]
+    environment:
+      POSTGRES_USER: cube
+      POSTGRES_PASSWORD: cube
+      POSTGRES_DB: finance
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./seed:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cube -d finance -p 5435"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  cube:
+    image: cubejs/cube:latest
+    container_name: cube_explorer
+    restart: unless-stopped
+    network_mode: 'host'   # required on Linux Docker hosts
+    env_file:
+      - .env
+    volumes:
+      - .:/cube/conf
+      # NOTE: do NOT overlay-mount model/cubes-js onto model/cubes. The base
+      # `.:/cube/conf` mount already exposes BOTH model/cubes-js (loaded as JS
+      # cubes by CUBEJS_SCHEMA_PATH=model) and model/cubes (which only holds
+      # *.schema.json sources, ignored by Cube). Adding the overlay made every
+      # cube load twice, which silently dropped access_policy masking on
+      # some cubes (e.g. transactions.description).
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Cube Store – single-node (standalone) mode.
+  #
+  # For local development this is the recommended setup: one container runs
+  # the metastore + query engine in a single process. (The router/worker
+  # cluster split is only needed for multi-node production deployments.)
+  #
+  # Ports inside the container:
+  #   3030 – MySQL-protocol query API   (Cube connects here)
+  #   3031 – HTTP status / health probe
+  #   9999 – metastore (unused in single-node mode)
+  # ---------------------------------------------------------------------------
+  cubestore:
+    image: cubejs/cubestore:latest
+    container_name: cubestore
+    restart: unless-stopped
+    network_mode: 'host'
+    volumes:
+      - cubestore_data:/cube/data
+
+volumes:
+  pg_data:
+  cubestore_data:

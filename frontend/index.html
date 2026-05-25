@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cube Explorer · Personal Finance</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #1a1d24;
+      --border: #2a2f3a;
+      --text: #e6e8eb;
+      --muted: #8a93a3;
+      --accent: #7c5cff;
+      --accent2: #29c6b7;
+      --positive: #29c6b7;
+      --negative: #ff6464;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 20px; }
+    header .badge {
+      background: var(--accent);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    main {
+      padding: 24px 32px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .card h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+    .kpi { font-size: 28px; font-weight: 600; }
+    .kpi.pos { color: var(--positive); }
+    .kpi.neg { color: var(--negative); }
+    .kpi .sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+    .span-3 { grid-column: span 3; }
+    .span-6 { grid-column: span 6; }
+    .span-12 { grid-column: span 12; }
+    canvas { width: 100% !important; max-height: 260px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .err { color: var(--negative); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Cube Explorer · Personal Finance Dashboard</h1>
+    <span class="badge">Live · REST API</span>
+  </header>
+
+  <main>
+    <div class="card span-3"><h2>Total income</h2><div class="kpi pos" id="kpi-income">…</div></div>
+    <div class="card span-3"><h2>Total expense</h2><div class="kpi neg" id="kpi-expense">…</div></div>
+    <div class="card span-3"><h2>Net cashflow</h2><div class="kpi" id="kpi-net">…</div></div>
+    <div class="card span-3"><h2>Savings rate</h2><div class="kpi" id="kpi-savings">…</div></div>
+
+    <div class="card span-6">
+      <h2>Cashflow by month</h2>
+      <canvas id="chart-cashflow"></canvas>
+    </div>
+    <div class="card span-6">
+      <h2>Spending by category</h2>
+      <canvas id="chart-category"></canvas>
+    </div>
+
+    <div class="card span-6">
+      <h2>Top merchants (by total spend)</h2>
+      <table id="tbl-merchants">
+        <thead><tr><th>Merchant</th><th class="num">Spend</th><th class="num">Tx</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card span-6">
+      <h2>Trailing-30-day expenses</h2>
+      <canvas id="chart-rolling"></canvas>
+    </div>
+
+    <div class="card span-12" id="err-box" style="display:none">
+      <h2>Error</h2><div class="err" id="err"></div>
+    </div>
+  </main>
+
+  <script>
+    const CUBE = 'http://localhost:4000/cubejs-api/v1';
+    const fmtMoney = n => n == null ? '–' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const fmtPct   = n => n == null ? '–' : Number(n).toFixed(1) + '%';
+    const fmtInt   = n => n == null ? '–' : Number(n).toLocaleString();
+
+    // The REST /load endpoint returns "Continue wait" on cold queries.
+    // This helper transparently retries until the result is ready.
+    async function load(query, { maxAttempts = 30, intervalMs = 1500 } = {}) {
+      const url = `${CUBE}/load?query=${encodeURIComponent(JSON.stringify(query))}`;
+      for (let i = 0; i < maxAttempts; i++) {
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.error === 'Continue wait') {
+          await new Promise(res => setTimeout(res, intervalMs));
+          continue;
+        }
+        if (!r.ok || j.error) throw new Error(j.error || `${r.status}: ${await r.text()}`);
+        return j.data || [];
+      }
+      throw new Error('Timed out waiting for Cube to return data');
+    }
+
+    function showError(e) {
+      document.getElementById('err-box').style.display = 'block';
+      document.getElementById('err').textContent = e.stack || e.message || String(e);
+    }
+
+    async function init() {
+      try {
+        // KPIs
+        const kpi = (await load({
+          measures: [
+            'transactions.total_income',
+            'transactions.total_expense',
+            'transactions.net_cashflow',
+            'transactions.savings_rate'
+          ]
+        }))[0] || {};
+        const income = kpi['transactions.total_income'];
+        const expense = kpi['transactions.total_expense'];
+        const net = kpi['transactions.net_cashflow'];
+        document.getElementById('kpi-income').textContent  = fmtMoney(income);
+        document.getElementById('kpi-expense').textContent = fmtMoney(expense);
+        document.getElementById('kpi-net').textContent     = fmtMoney(net);
+        document.getElementById('kpi-net').classList.add(net >= 0 ? 'pos' : 'neg');
+        document.getElementById('kpi-savings').textContent = fmtPct(kpi['transactions.savings_rate']);
+
+        // Cashflow by month
+        const cashflow = await load({
+          measures: ['transactions.total_income', 'transactions.total_expense'],
+          timeDimensions: [{
+            dimension: 'transactions.transaction_date',
+            granularity: 'month',
+            dateRange: 'last 18 months'
+          }]
+        });
+        new Chart(document.getElementById('chart-cashflow'), {
+          type: 'bar',
+          data: {
+            labels: cashflow.map(r => r['transactions.transaction_date.month']?.slice(0, 7)),
+            datasets: [
+              {
+                label: 'Income',
+                data: cashflow.map(r => r['transactions.total_income']),
+                backgroundColor: '#29c6b7'
+              },
+              {
+                label: 'Expense',
+                data: cashflow.map(r => r['transactions.total_expense']),
+                backgroundColor: '#ff6464'
+              }
+            ]
+          }
+        });
+
+        // Spending by category (doughnut)
+        const cats = await load({
+          measures: ['transactions.total_expense'],
+          dimensions: ['categories.name'],
+          order: { 'transactions.total_expense': 'desc' },
+          limit: 8,
+          segments: ['transactions.expenses_only']
+        });
+        new Chart(document.getElementById('chart-category'), {
+          type: 'doughnut',
+          data: {
+            labels: cats.map(r => r['categories.name']),
+            datasets: [{
+              data: cats.map(r => r['transactions.total_expense']),
+              backgroundColor: ['#7c5cff', '#29c6b7', '#ffb547', '#ff6464', '#5aa9ff', '#a06cd5', '#ff8fab', '#9bdb5b']
+            }]
+          }
+        });
+
+        // Top merchants table
+        const merchants = await load({
+          measures: ['transactions.total_expense', 'transactions.posted_count'],
+          dimensions: ['merchants.name'],
+          order: { 'transactions.total_expense': 'desc' },
+          limit: 8,
+          segments: ['transactions.expenses_only']
+        });
+        const tbody = document.querySelector('#tbl-merchants tbody');
+        tbody.innerHTML = merchants.map(r => `
+          <tr>
+            <td>${r['merchants.name'] ?? '—'}</td>
+            <td class="num">${fmtMoney(r['transactions.total_expense'])}</td>
+            <td class="num">${fmtInt(r['transactions.posted_count'])}</td>
+          </tr>
+        `).join('');
+
+        // Trailing-30-day rolling expense
+        const rolling = await load({
+          measures: ['transactions.trailing_30d_expense'],
+          timeDimensions: [{
+            dimension: 'transactions.transaction_date',
+            granularity: 'day',
+            dateRange: 'last 90 days'
+          }]
+        });
+        new Chart(document.getElementById('chart-rolling'), {
+          type: 'line',
+          data: {
+            labels: rolling.map(r => r['transactions.transaction_date.day']?.slice(0, 10)),
+            datasets: [{
+              label: 'Trailing 30d expense',
+              data: rolling.map(r => r['transactions.trailing_30d_expense']),
+              borderColor: '#7c5cff',
+              backgroundColor: 'rgba(124,92,255,.15)',
+              tension: 0.3,
+              fill: true,
+              pointRadius: 0
+            }]
+          },
+          options: { plugins: { legend: { display: false } } }
+        });
+      } catch (e) {
+        showError(e);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{
+  "name": "users",
+  "sql_table": "public.users",
+  "title": "Users",
+  "description": "People who own accounts in the personal-finance system",
+  "public": true,
+  "joins": {
+    "accounts": {
+      "sql": "{CUBE}.id = {accounts}.user_id",
+      "relationship": "one_to_many"
+    },
+    "transactions": {
+      "sql": "{CUBE}.id = {transactions}.user_id",
+      "relationship": "one_to_many"
+    }
+  },
+  "dimensions": {
+    "id": {
+      "sql": "id",
+      "type": "number",
+      "primary_key": true,
+      "public": true
+    },
+    "email": {
+      "sql": "email",
+      "type": "string",
+      "mask": {
+        "sql": "CONCAT(LEFT({CUBE}.email, 1), '***@', SPLIT_PART({CUBE}.email, '@', 2))"
+      }
+    },
+    "full_name": {
+      "sql": "full_name",
+      "type": "string",
+      "title": "Full name",
+      "mask": {
+        "sql": "CONCAT('ANON-', {CUBE}.id)"
+      }
+    },
+    "country": {
+      "sql": "country",
+      "type": "string",
+      "mask": {
+        "sql": "'XX'"
+      }
+    },
+    "created_at": {
+      "sql": "created_at",
+      "type": "time"
+    }
+  },
+  "measures": {
+    "count": {
+      "type": "count",
+      "description": "Number of registered users"
+    }
+  },
+  "hierarchies": {
+    "geo": {
+      "title": "Geography",
+      "levels": ["country", "full_name"]
+    }
+  }
+}
